@@ -6,33 +6,25 @@
 <meta name="theme-color" content="#111827">
 <title>15 stopiek</title>
 <style>
-*{box-sizing:border-box}
-body{margin:0;font-family:Arial,sans-serif;background:#f3f4f6;color:#111827}
-header{padding:18px 14px;background:#111827;color:white}
-h1{margin:0 0 12px;font-size:25px}
-.top{display:flex;gap:8px;flex-wrap:wrap}
-button{border:0;border-radius:10px;padding:12px 15px;font-weight:700;font-size:15px;cursor:pointer;min-height:44px}
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f3f4f6;color:#111827}
+header{padding:16px 14px;background:#111827;color:white}
+h1{margin:0 0 5px;font-size:25px}.clock{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;margin-bottom:13px}
+.top{display:flex;gap:8px;flex-wrap:wrap}button{border:0;border-radius:10px;padding:12px 15px;font-weight:700;font-size:15px;cursor:pointer;min-height:44px}
 .startall{background:#22c55e;color:#052e16}.pauseall{background:#facc15}.resetall{background:#e5e7eb}
-main{max-width:1200px;margin:auto;padding:14px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
-.card{background:white;border:2px solid #e5e7eb;border-radius:16px;padding:14px}
-.card.running{border-color:#22c55e}.card.done{border-color:#ef4444}
+main{max-width:1200px;margin:auto;padding:14px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.card{background:white;border:2px solid #e5e7eb;border-radius:16px;padding:14px}.card.running{border-color:#22c55e}
 .name{width:100%;font-size:18px;font-weight:700;padding:9px;border:1px solid #d1d5db;border-radius:9px;margin-bottom:10px}
 .time{text-align:center;font-size:54px;font-weight:800;font-variant-numeric:tabular-nums;margin:14px 0}
-.controls{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.controls button{background:#eef2f7}.controls .go{background:#dcfce7}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:8px}.controls button{background:#eef2f7}.controls .go{background:#dcfce7}
 .status{text-align:center;font-size:12px;color:#6b7280;margin-top:8px}
-@media(max-width:520px){
- .grid{grid-template-columns:1fr 1fr;gap:8px}.card{padding:10px}.time{font-size:38px}
- .name{font-size:16px}.controls{grid-template-columns:1fr 1fr}.controls button{padding:9px 5px;font-size:13px}
- .top button{flex:1}
-}
+@media(max-width:520px){.grid{grid-template-columns:1fr 1fr;gap:8px}.card{padding:10px}.time{font-size:38px}.name{font-size:16px}.controls button{padding:9px 5px;font-size:13px}.top button{flex:1}}
 @media(max-width:360px){.grid{grid-template-columns:1fr}.time{font-size:50px}}
 </style>
 </head>
 <body>
 <header>
 <h1>⏱️ 15 stopiek</h1>
+<div class="clock" id="clock">00:00:00</div>
 <div class="top">
 <button class="startall" id="startAll">▶ Spustiť všetky</button>
 <button class="pauseall" id="pauseAll">⏸ Zastaviť všetky</button>
@@ -40,78 +32,89 @@ main{max-width:1200px;margin:auto;padding:14px}
 </div>
 </header>
 <main><div class="grid" id="grid"></div></main>
-
 <script>
 (() => {
-const timers=[];
-const grid=document.getElementById("grid");
+const timers=[], grid=document.getElementById("grid"), clock=document.getElementById("clock");
+const KEY="multistop-v3";
+let saved={};
+try{saved=JSON.parse(localStorage.getItem(KEY)||"{}")}catch(e){saved={}}
 
 function format(ms){
-  const total=Math.max(0,Math.floor(ms/1000));
-  const h=Math.floor(total/3600);
-  const m=Math.floor((total%3600)/60);
-  const s=total%60;
-  if(h>0) return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0")+":"+String(s).padStart(2,"0");
-  return String(m).padStart(2,"0")+":"+String(s).padStart(2,"0");
+ const n=Math.max(0,Math.floor(ms/1000)),h=Math.floor(n/3600),m=Math.floor(n%3600/60),s=n%60;
+ return h?String(h).padStart(2,"0")+":"+String(m).padStart(2,"0")+":"+String(s).padStart(2,"0"):String(m).padStart(2,"0")+":"+String(s).padStart(2,"0");
 }
-
+function currentElapsed(t){
+ if(!t.running)return t.elapsed;
+ return t.elapsed+(Date.now()-t.startedAt);
+}
+function save(){
+ const data=timers.map(t=>({
+   name:t.card.querySelector(".name").value,
+   elapsed:currentElapsed(t),
+   running:t.running
+ }));
+ try{localStorage.setItem(KEY,JSON.stringify(data))}catch(e){}
+}
 function render(t){
-  t.card.querySelector(".time").textContent=format(t.elapsed);
-  t.card.querySelector(".status").textContent=t.running?"BEŽÍ":"Zastavená";
-  t.card.classList.toggle("running",t.running);
+ t.card.querySelector(".time").textContent=format(currentElapsed(t));
+ t.card.querySelector(".status").textContent=t.running?"BEŽÍ":"Zastavená";
+ t.card.classList.toggle("running",t.running);
 }
-
 function start(t){
-  if(!t.running){t.running=true;t.last=performance.now();render(t);}
+ if(!t.running){
+   t.elapsed=currentElapsed(t);
+   t.startedAt=Date.now();
+   t.running=true;
+   render(t);save();
+ }
 }
 function pause(t){
-  if(t.running){
-    t.elapsed+=performance.now()-t.last;
-    t.running=false;
-    render(t);
-  }
+ if(t.running){
+   t.elapsed=currentElapsed(t);
+   t.running=false;
+   render(t);save();
+ }
 }
 function reset(t){
-  t.running=false;t.elapsed=0;render(t);
+ t.running=false;t.elapsed=0;t.startedAt=0;render(t);save();
 }
-
 for(let i=1;i<=15;i++){
-  const t={elapsed:0,running:false,last:0};
-  const card=document.createElement("article");
-  card.className="card";
-  card.innerHTML=`
-    <input class="name" value="Stopky ${i}" aria-label="Názov stopiek ${i}">
-    <div class="time">00:00</div>
-    <div class="controls">
-      <button class="go">▶ Štart</button>
-      <button class="stop">⏸ Zastaviť</button>
-      <button class="zero">↺ Vynulovať</button>
-    </div>
-    <div class="status">Zastavená</div>`;
-  t.card=card;
-  grid.appendChild(card);
-  timers.push(t);
-
-  card.querySelector(".go").onclick=()=>start(t);
-  card.querySelector(".stop").onclick=()=>pause(t);
-  card.querySelector(".zero").onclick=()=>reset(t);
+ const old=saved[i-1]||{};
+ const t={elapsed:Number(old.elapsed)||0,running:Boolean(old.running),startedAt:0};
+ if(t.running)t.startedAt=Date.now();
+ const c=document.createElement("article");c.className="card";
+ c.innerHTML=`<input class="name" value="${String(old.name||("Stopky "+i)).replace(/"/g,"&quot;")}">
+ <div class="time">00:00</div>
+ <div class="controls">
+ <button class="go">▶ Štart</button>
+ <button class="stop">⏸ Zastaviť</button>
+ <button class="zero">↺ Vynulovať</button>
+ </div><div class="status">Zastavená</div>`;
+ t.card=c;grid.appendChild(c);timers.push(t);
+ c.querySelector(".go").onclick=()=>start(t);
+ c.querySelector(".stop").onclick=()=>pause(t);
+ c.querySelector(".zero").onclick=()=>reset(t);
+ c.querySelector(".name").addEventListener("input",save);
+ render(t);
 }
+document.getElementById("startAll").onclick=()=>{timers.forEach(start);save()};
+document.getElementById("pauseAll").onclick=()=>{timers.forEach(pause);save()};
+document.getElementById("resetAll").onclick=()=>{timers.forEach(reset);save()};
 
-document.getElementById("startAll").onclick=()=>timers.forEach(start);
-document.getElementById("pauseAll").onclick=()=>timers.forEach(pause);
-document.getElementById("resetAll").onclick=()=>timers.forEach(reset);
+function updateClock(){
+ const d=new Date();
+ clock.textContent=[d.getHours(),d.getMinutes(),d.getSeconds()].map(x=>String(x).padStart(2,"0")).join(":");
+}
+updateClock();setInterval(updateClock,1000);
 
-function tick(now){
-  timers.forEach(t=>{
-    if(t.running){
-      t.elapsed+=now-t.last;
-      t.last=now;
-      render(t);
-    }
-  });
-  requestAnimationFrame(tick);
+function tick(){
+ timers.forEach(render);
+ requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
+setInterval(save,5000);
+window.addEventListener("pagehide",save);
+window.addEventListener("beforeunload",save);
 })();
 </script>
 </body>
